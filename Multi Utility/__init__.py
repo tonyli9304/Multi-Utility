@@ -22,6 +22,8 @@ classes = (
     pose_tools.BONE_OT_add_damped_track,
     pose_tools.BONE_OT_adjust_damped_track_influence,
     pose_tools.BONE_OT_remove_trackchild_constraints,
+    pose_tools.BONE_OT_copy_global_transform,
+    pose_tools.BONE_OT_paste_global_transform,
     #object
     object_tools.OBJECT_OT_copy_global_transform,
     object_tools.OBJECT_OT_paste_global_transform,

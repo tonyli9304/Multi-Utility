@@ -1,6 +1,72 @@
 import bpy
+from mathutils import Matrix
 
 # === POSE OPERATORS ===
+bone_stored_world_matrix = None
+
+#-----------------------------
+#  copy bone global transform
+#-----------------------------
+class BONE_OT_copy_global_transform(bpy.types.Operator):
+    bl_idname = "bone.copy_global_transform"
+    bl_label = "Copy Bone Global Transform"
+
+    def execute(self, context):
+        global bone_stored_world_matrix
+        
+        # Check we're in pose mode
+        if context.mode != 'POSE':
+            self.report({'ERROR'}, "Must be in Pose Mode")
+            return {'CANCELLED'}
+        
+        # Get the active pose bone
+        bone = context.active_pose_bone
+        if not bone:
+            self.report({'ERROR'}, "No active pose bone")
+            return {'CANCELLED'}
+
+        # Get the bone's world matrix (this takes constraints into account)
+        depsgraph = context.evaluated_depsgraph_get()
+        obj = context.object
+        eval_obj = obj.evaluated_get(depsgraph)
+        eval_bone = eval_obj.pose.bones[bone.name]
+        
+        bone_stored_world_matrix = obj.matrix_world @ eval_bone.matrix
+
+        self.report({'INFO'}, "Bone global transform copied")
+        return {'FINISHED'}
+
+
+class BONE_OT_paste_global_transform(bpy.types.Operator):
+    bl_idname = "bone.paste_global_transform"
+    bl_label = "Paste Bone Global Transform"
+
+    def execute(self, context):
+        global bone_stored_world_matrix
+        
+        if bone_stored_world_matrix is None:
+            self.report({'ERROR'}, "No bone global transform stored")
+            return {'CANCELLED'}
+
+        # Check we're in pose mode
+        if context.mode != 'POSE':
+            self.report({'ERROR'}, "Must be in Pose Mode")
+            return {'CANCELLED'}
+        
+        bone = context.active_pose_bone
+        if not bone:
+            self.report({'ERROR'}, "No active pose bone")
+            return {'CANCELLED'}
+
+        # Set the bone's matrix directly
+        bone.matrix = bone_stored_world_matrix.copy()
+
+        self.report({'INFO'}, "Bone global transform pasted")
+        return {'FINISHED'}
+
+#---------------------------
+#  damped track constraints
+#---------------------------
 class BONE_OT_add_damped_track(bpy.types.Operator):
     bl_idname = "bone_tools.add_damped_track"
     bl_label = "Add Damped Track (TrackChild)"
@@ -68,3 +134,4 @@ class BONE_OT_remove_trackchild_constraints(bpy.types.Operator):
                     removed += 1
         self.report({'INFO'}, f"Removed {removed} constraint(s).")
         return {'FINISHED'}
+
