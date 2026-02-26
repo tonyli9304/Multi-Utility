@@ -34,6 +34,7 @@ classes = (
     animation_tools.ANIM_OT_set_handle_type,
     animation_tools.ANIM_OT_edit_handles_aligned,
     animation_tools.ANIM_OT_edit_handles_free,
+    animation_tools.ANIM_OT_root_alignment_automation,
     # ui
     #ui_panel.MULTI_PT_main_panel,
     ui_panel.POSE_PT_panel,

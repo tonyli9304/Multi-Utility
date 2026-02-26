@@ -173,3 +173,132 @@ class ANIM_OT_edit_handles_free(bpy.types.Operator):
 
         self.report({'INFO'}, "Free handle edits applied")
         return {'FINISHED'}
+
+import bpy
+
+class ANIM_OT_root_alignment_automation(bpy.types.Operator):
+    bl_idname = "anim_tools.root_alignment_automation"
+    bl_label = "Root Alignment Automation"
+    bl_description = "Automatically align root bone movement to a stationary foot controller across keyframes"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    stationary_mode: bpy.props.BoolProperty(
+        name="Stationary Mode (Invert Delta)",
+        description="Invert delta for anti-slide (root counters foot movement to keep foot stationary)",
+        default=False  # False for your pseudocode (follow); True for bl_description (stationary)
+    )
+
+    def execute(self, context):
+        if context.mode != 'POSE':
+            self.report({'ERROR'}, "Must be in Pose Mode")
+            return {'CANCELLED'}
+
+        selected_bones = context.selected_pose_bones
+        if len(selected_bones) != 2:
+            self.report({'ERROR'}, "Select exactly 2 bones: foot controller and root bone")
+            return {'CANCELLED'}
+
+        # Auto-detect foot based on name (handles order issue)
+        foot_candidate1 = selected_bones[0]
+        foot_candidate2 = selected_bones[1]
+        if "foot" in foot_candidate1.name.lower() or "ik" in foot_candidate1.name.lower():
+            foot_controller = foot_candidate1
+            root_bone = foot_candidate2
+        elif "foot" in foot_candidate2.name.lower() or "ik" in foot_candidate2.name.lower():
+            foot_controller = foot_candidate2
+            root_bone = foot_candidate1
+        else:
+            # Fallback to original order with warning
+            self.report({'WARNING'}, "No clear foot bone name detected; using selection order")
+            foot_controller = selected_bones[0]
+            root_bone = selected_bones[1]
+
+        obj = context.object
+
+        if not obj.animation_data or not obj.animation_data.action:
+            self.report({'ERROR'}, "No animation data found")
+            return {'CANCELLED'}
+
+        action = obj.animation_data.action
+
+        # Collect selected keyframes ONLY from foot's f-curves
+        foot_paths = [
+            f'pose.bones["{foot_controller.name}"].location',
+            f'pose.bones["{foot_controller.name}"].rotation_quaternion',
+            f'pose.bones["{foot_controller.name}"].rotation_euler',
+            f'pose.bones["{foot_controller.name}"].rotation_axis_angle',
+        ]
+        selected_keyframes = set()
+        for fcurve in action.fcurves:
+            if fcurve.data_path in foot_paths:
+                for keyframe in fcurve.keyframe_points:
+                    if keyframe.select_control_point:
+                        selected_keyframes.add(int(keyframe.co[0]))
+
+        if len(selected_keyframes) < 2:
+            self.report({'ERROR'}, "Select at least 2 keyframes on the foot controller in Graph Editor/Dopesheet")
+            return {'CANCELLED'}
+
+        keyframe_list = sorted(list(selected_keyframes))
+
+        # Cache obj world (handles non-identity armatures)
+        obj_world = obj.matrix_world.copy()
+        obj_world_inv = obj_world.inverted()
+
+        # Set to first frame
+        first_frame = keyframe_list[0]
+        context.scene.frame_set(first_frame)
+        context.view_layer.update()
+        depsgraph = context.evaluated_depsgraph_get()
+        eval_obj = obj.evaluated_get(depsgraph)
+        eval_foot = eval_obj.pose.bones[foot_controller.name]
+        eval_root = eval_obj.pose.bones[root_bone.name]
+
+        previous_foot_global = obj_world @ eval_foot.matrix.copy()
+        previous_root_global = obj_world @ eval_root.matrix.copy()
+
+        # Process subsequent frames
+        for i in range(1, len(keyframe_list)):
+            current_frame = keyframe_list[i]
+            context.scene.frame_set(current_frame)
+            context.view_layer.update()
+            depsgraph = context.evaluated_depsgraph_get()
+            eval_obj = obj.evaluated_get(depsgraph)
+            eval_foot = eval_obj.pose.bones[foot_controller.name]
+
+            foot_global_now = obj_world @ eval_foot.matrix.copy()
+
+            # Delta
+            if self.stationary_mode:
+                delta_transform = previous_foot_global @ foot_global_now.inverted()  # Invert for stationary
+            else:
+                delta_transform = foot_global_now @ previous_foot_global.inverted()  # Follow
+
+            new_root_global = delta_transform @ previous_root_global
+
+            # Set root matrix (handle parent)
+            if root_bone.parent:
+                parent_world = obj_world @ root_bone.parent.matrix.copy()
+                root_bone.matrix = parent_world.inverted() @ new_root_global
+            else:
+                root_bone.matrix = obj_world_inv @ new_root_global
+
+            # Force immediate update to prevent snap/lag
+            depsgraph.update()
+            context.view_layer.update()
+
+            # Keyframe (rotation-mode aware)
+            root_bone.keyframe_insert(data_path="location", frame=current_frame)
+            if root_bone.rotation_mode == 'QUATERNION':
+                root_bone.keyframe_insert(data_path="rotation_quaternion", frame=current_frame)
+            elif root_bone.rotation_mode in {'XYZ', 'XZY', 'YXZ', 'YZX', 'ZXY', 'ZYX'}:
+                root_bone.keyframe_insert(data_path="rotation_euler", frame=current_frame)
+            elif root_bone.rotation_mode == 'AXIS_ANGLE':
+                root_bone.keyframe_insert(data_path="rotation_axis_angle", frame=current_frame)
+            # root_bone.keyframe_insert(data_path="scale", frame=current_frame)  # Uncomment if needed
+
+            previous_foot_global = foot_global_now
+            previous_root_global = new_root_global
+
+        self.report({'INFO'}, f"Root alignment applied to {len(keyframe_list)} keyframes")
+        return {'FINISHED'}

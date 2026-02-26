@@ -81,29 +81,33 @@ class ANIMATION_PT_panel(bpy.types.Panel):
     bl_category = 'Multi Utility'
     bl_options = {'DEFAULT_CLOSED'}
 
-    def draw(self, context):  # <- Must be named "draw"
+    def draw(self, context):
         layout = self.layout
         settings = context.scene.multi_utility_settings
         
-        layout.label(text="Graph Editor Simplified", icon='GRAPH')
+        # Graph Editor Tools
+        box = layout.box()
+        box.label(text="Graph Editor Simplified", icon='GRAPH')
 
         # === AXIS TOGGLES ===
         for label, prefix in [("Location", "loc"), ("Rotation", "rot"), ("Scale", "scl")]:
-            col = layout.column()
-            row = col.row()
+            row = box.row()
             row.label(text=label)
             row.prop(settings, f"{prefix}_x", toggle=True, text="X")
             row.prop(settings, f"{prefix}_y", toggle=True, text="Y")
             row.prop(settings, f"{prefix}_z", toggle=True, text="Z")
 
-        layout.separator()
+        box.separator()
         
-        col = layout.column()
-        col.prop(settings, "interpolation_mode")
-        col.prop(settings, "extrapolation_mode")
-        col.operator("anim_tools.apply_curve_settings", text="Apply to Selected", icon='CHECKMARK')
+        box.prop(settings, "interpolation_mode")
+        box.prop(settings, "extrapolation_mode")
+        box.operator("anim_tools.apply_curve_settings", text="Apply to Selected", icon='CHECKMARK')
 
-        layout.separator()
+        box.separator()
         
-        col = layout.column()
-        col.prop(settings, "handle_mode", text="Handle Mode")
+        box.prop(settings, "handle_mode", text="Handle Mode")
+
+        # Root Alignment Automation
+        box = layout.box()
+        box.label(text="Root Alignment Automation", icon='ARMATURE_DATA')
+        box.operator("anim_tools.root_alignment_automation", text="Align Root to Foot", icon='CON_LOCLIKE')
