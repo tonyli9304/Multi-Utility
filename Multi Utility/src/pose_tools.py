@@ -12,10 +12,6 @@ from mathutils import Matrix
 
 bone_stored_world_matrix = None  # Global storage
 
-import bpy
-from mathutils import Matrix
-
-bone_stored_world_matrix = None  # Global storage
 
 class BONE_OT_copy_global_transform(bpy.types.Operator):
     bl_idname = "bone.copy_global_transform"
@@ -64,12 +60,32 @@ class BONE_OT_paste_global_transform(bpy.types.Operator):
             self.report({'ERROR'}, "No active pose bone")
             return {'CANCELLED'}
 
-        # KEY PART: Convert world matrix back to armature space
-        # Get the evaluated armature (with constraints applied) to get correct inverse
-        arm_eval = context.active_object.evaluated_get(context.view_layer.depsgraph)
+        # Convert world matrix back to armature space
+        arm = context.active_object
+        arm_eval = arm.evaluated_get(context.view_layer.depsgraph)
         bone.matrix = arm_eval.matrix_world.inverted() @ bone_stored_world_matrix
 
-        self.report({'INFO'}, "Bone global transform pasted")
+        # Force view layer update
+        context.view_layer.update()
+        
+        # AUTO-KEYFRAME
+        frame = context.scene.frame_current
+        
+        # Keyframe location
+        bone.keyframe_insert(data_path="location", frame=frame)
+        
+        # Keyframe rotation based on rotation mode
+        if bone.rotation_mode == 'QUATERNION':
+            bone.keyframe_insert(data_path="rotation_quaternion", frame=frame)
+        elif bone.rotation_mode == 'AXIS_ANGLE':
+            bone.keyframe_insert(data_path="rotation_axis_angle", frame=frame)
+        else:  # Euler
+            bone.keyframe_insert(data_path="rotation_euler", frame=frame)
+        
+        # Keyframe scale
+        bone.keyframe_insert(data_path="scale", frame=frame)
+
+        self.report({'INFO'}, f"Bone global transform pasted and keyframed at frame {frame}")
         return {'FINISHED'}
 #---------------------------
 #  damped track constraints
